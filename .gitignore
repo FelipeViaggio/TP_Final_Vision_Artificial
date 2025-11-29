@@ -30,3 +30,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# .pth
+best_larsson_classification.pth
