@@ -62,6 +62,11 @@ datasets/
 *.avi
 *.mov
 
+# Excepciones para la carpeta images (quiero subir esas imágenes)
+!images/
+!images/*.jpg
+!images/*.jpeg
+
 # Archivos grandes
 *.zip
 *.tar
@@ -99,4 +104,4 @@ secrets.py
 # Incluir solo notebooks
 !pipe2.ipynb
 !*.ipynb
-
+"""
