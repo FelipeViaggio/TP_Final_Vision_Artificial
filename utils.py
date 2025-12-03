@@ -199,6 +199,75 @@ def hard_encode_ab(ab_tensor, pts_ab):
     return q_idx
 
 
+def build_soft_encoding_matrix(pts_ab, T=0.5, K=5):
+    """
+    Construye una matriz (Q, Q) donde cada fila i es una distribución
+    suave sobre las Q clases, concentrada en los K vecinos más cercanos
+    del bin i en el espacio ab.
+
+    pts_ab: tensor (Q, 2) con los centros de los bins en coordenadas ab reales.
+    T: temperatura (más chico = distribución más picuda).
+    K: cantidad de vecinos (incluyendo el propio bin).
+    """
+
+    # Aseguramos que esté en float32
+    pts_ab = pts_ab.to(torch.float32)
+    Q = pts_ab.shape[0]
+
+    # Distancias euclídeas entre cada par de bins: (Q, Q)
+    # dist[i, j] = distancia entre bin i y bin j en el plano ab
+    dist = torch.cdist(pts_ab, pts_ab, p=2)  # (Q, Q)
+
+    # Inicializamos puntajes con -inf
+    scores = torch.full_like(dist, -float("inf"))
+
+    # K vecinos más cercanos para cada fila (incluye al propio bin)
+    knn_vals, knn_idx = dist.topk(K, dim=1, largest=False)  # (Q, K)
+
+    # Rellenamos solo los K vecinos con -dist/T (más cerca = mayor score)
+    scores.scatter_(1, knn_idx, -knn_vals / T)
+
+    # Softmax por fila -> cada fila es una distribución de probabilidad
+    soft_enc = F.softmax(scores, dim=1)  # (Q, Q)
+    return soft_enc
+
+def soft_ce_loss(logits, q_idx, soft_encoding_matrix, class_weights=None):
+    """
+    Cross-entropy con targets suaves (soft-encoding).
+
+    logits: (B, Q, H, W)
+    q_idx: (B, H, W)      -- índices duros por píxel
+    soft_encoding_matrix: (Q, Q) -- fila i = distribución suave para clase i
+    class_weights: (Q,) o None  -- rebalanceo de clases si querés
+    """
+
+    B, Q, H, W = logits.shape
+    N = B * H * W  # número de píxeles en el batch
+
+    # 1) Aplanamos logits a (N, Q)
+    # (B, Q, H, W) -> (B, H, W, Q) -> (N, Q)
+    logits_flat = logits.permute(0, 2, 3, 1).reshape(N, Q)
+
+    # 2) Obtenemos los targets suaves para cada píxel: (N, Q)
+    q_idx_flat   = q_idx.view(-1)                 # (N,)
+    soft_targets = soft_encoding_matrix[q_idx_flat]  # (N, Q)
+
+    # 3) Log-probabilidades predichas: (N, Q)
+    log_probs = F.log_softmax(logits_flat, dim=1)
+
+    # 4) Cross-entropy con targets suaves: - ∑ p_true * log p_pred
+    loss_per_pixel = -(soft_targets * log_probs).sum(dim=1)  # (N,)
+
+    # 5) Rebajamos o subimos pesos según frecuencia de clase (opcional)
+    if class_weights is not None:
+        weights = class_weights[q_idx_flat]       # (N,)
+        loss_per_pixel = loss_per_pixel * weights
+
+    # 6) Promediamos sobre todos los píxeles
+    loss = loss_per_pixel.mean()
+    return loss
+
+
 def decode_ab_annealed(logits, pts_ab, T=0.4):
     """
     Decodifica logits de clases de color a canales a,b continuos
