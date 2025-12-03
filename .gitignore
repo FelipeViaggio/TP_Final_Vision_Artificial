@@ -1,7 +1,4 @@
-# %%
-# Crear .gitignore para el proyecto
-
-gitignore_content = """# Python
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -46,6 +43,9 @@ ENV/
 *.h5
 *.pkl
 *.pickle
+
+# EXCEPCIÓN: este modelo sí lo quiero subir
+!colornet_v4_best.pth
 
 # Datasets
 data/
@@ -98,10 +98,9 @@ secrets.py
 .env
 
 # Excepciones (archivos que SÍ queremos versionar)
-# Si querés incluir algún modelo pequeño, agregá:
 # !small_model.pth
 
 # Incluir solo notebooks
 !pipe2.ipynb
 !*.ipynb
-"""
+
